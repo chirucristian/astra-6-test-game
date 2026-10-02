@@ -28,13 +28,25 @@ main{display:flex;gap:58px;align-items:center;width:min(100%,860px);flex:1;justi
 'use strict';
 const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
 const ui=Object.fromEntries(['score','best','overlay','badge','title','description','action','subhint','status','sound','pause','announcement','health'].map(id=>[id,document.getElementById(id)]));
-const W=390,H=560,FLOOR=520,BX=106,R=13,GRAVITY=1150,JUMP=-350,BASE_SPEED=155,MAX_SPEED=260,SPEED_RAMP=1.5,GAP=164,SPACING=228;
-let state='ready',bird={y:260,v:0},pipes=[],particles=[],score=0,best=0,elapsed=0,world=0,last=0,acc=0,deadAt=0,sound=false,audio,health=1,invincible=0,pipeCount=0,collectibles=[],popups=[],flightTime=0;
+const W=390,H=560,FLOOR=520,BX=106,R=13,GRAVITY=1150,JUMP=-350,BASE_SPEED=155,MAX_SPEED=260,SPEED_RAMP=1.5,MIN_GAP=140,MAX_GAP=190,SPACING=228;
+let state='ready',bird={y:260,v:0},pipes=[],particles=[],score=0,best=0,elapsed=0,world=0,last=0,acc=0,deadAt=0,sound=false,audio,health=1,invincible=0,pipesUntilPowerup=powerupSpacing(),collectibles=[],popups=[],flightTime=0;
 try{best=Math.max(0,Number(localStorage.getItem('astra-bird-best'))||0)}catch{}ui.best.textContent=best;
 const stars=Array.from({length:38},(_,i)=>({x:(i*97+31)%W,y:(i*71+17)%370,r:i%4===0?1.5:.8}));
 function tone(freq,duration=.08,type='sine',volume=.035){if(!sound)return;try{audio??=new(window.AudioContext||window.webkitAudioContext)();if(audio.state==='suspended')audio.resume();const o=audio.createOscillator(),g=audio.createGain();o.type=type;o.frequency.setValueAtTime(freq,audio.currentTime);o.frequency.exponentialRampToValueAtTime(freq*.65,audio.currentTime+duration);g.gain.setValueAtTime(volume,audio.currentTime);g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+duration);o.connect(g);g.connect(audio.destination);o.start();o.stop(audio.currentTime+duration)}catch{}}
-function addPipe(x){const previous=pipes.at(-1);const center=previous?Math.max(155,Math.min(365,previous.center+(Math.random()-.5)*150)):250;pipes.push({x,center,passed:false});pipeCount++;if(pipeCount%2===0)collectibles.push({x:x+28,y:center+(Math.random()<.5?-1:1)*(32+Math.random()*16),type:pipeCount%6===0?'health':'point',taken:false})}
-function reset(){bird={y:260,v:JUMP};pipes=[];particles=[];collectibles=[];popups=[];pipeCount=0;flightTime=0;health=1;invincible=0;showHealth();score=0;ui.score.textContent=0;addPipe(W+80);addPipe(W+80+SPACING);state='playing';ui.overlay.hidden=true;ui.status.textContent='FIND YOUR RHYTHM';ui.pause.textContent='Ⅱ';ui.pause.setAttribute('aria-label','Pause game');acc=0;canvas.focus({preventScroll:true});tone(570)}
+function powerupSpacing(){return 3+Math.floor(Math.random()*4)}
+function addPipe(x){
+ const previous=pipes.at(-1);
+ const center=previous?Math.max(155,Math.min(365,previous.center+(Math.random()-.5)*150)):250;
+ const gap=MIN_GAP+Math.random()*(MAX_GAP-MIN_GAP);
+ pipes.push({x,center,gap,passed:false});
+ if(--pipesUntilPowerup===0){
+   const maxOffset=Math.min(48,gap/2-R-20);
+   const offset=26+Math.random()*(maxOffset-26);
+   collectibles.push({x:x+28,y:center+(Math.random()<.5?-1:1)*offset,type:Math.random()<.25?'health':'point',taken:false});
+   pipesUntilPowerup=powerupSpacing();
+ }
+}
+function reset(){bird={y:260,v:JUMP};pipes=[];particles=[];collectibles=[];popups=[];pipesUntilPowerup=powerupSpacing();flightTime=0;health=1;invincible=0;showHealth();score=0;ui.score.textContent=0;addPipe(W+80);addPipe(W+80+SPACING);state='playing';ui.overlay.hidden=true;ui.status.textContent='FIND YOUR RHYTHM';ui.pause.textContent='Ⅱ';ui.pause.setAttribute('aria-label','Pause game');acc=0;canvas.focus({preventScroll:true});tone(570)}
 function flap(){if(state==='paused'){togglePause();return}if(state==='ready'){reset();return}if(state==='over'){if(performance.now()-deadAt>450)reset();return}bird.v=JUMP;tone(570);for(let i=0;i<4;i++)particles.push({x:BX-9,y:bird.y+4,vx:-35-Math.random()*45,vy:Math.random()*35,life:.32,color:'#ffd4a0'})}
 function finish(){if(state!=='playing')return;state='over';deadAt=performance.now();const record=score>best;if(record){best=score;ui.best.textContent=best;try{localStorage.setItem('astra-bird-best',String(best))}catch{}}tone(130,.2,'triangle',.07);ui.overlay.hidden=false;ui.badge.textContent=record?'A NEW PERSONAL BEST':'EVERY FLIGHT COUNTS';ui.title.innerHTML=record?'Look at you fly.':'Another little<br>adventure?';ui.description.textContent=`You scored ${score} ${score===1?'point':'points'}. Personal best: ${best}.`;ui.action.textContent='Fly again →';ui.subhint.textContent='TAP OR PRESS SPACE TO RETRY';ui.status.textContent='ONE MORE TRY?';ui.announcement.textContent=`Game over. Score ${score}. Best ${best}.`;for(let i=0;i<16;i++)particles.push({x:BX,y:bird.y,vx:(Math.random()-.5)*150,vy:(Math.random()-.5)*150,life:.6,color:'#ffbe91'})}
 function togglePause(){if(state==='playing'){state='paused';ui.overlay.hidden=false;ui.badge.textContent='TAKE A BREATHER';ui.title.textContent='Sky can wait.';ui.description.textContent='Your flight is right where you left it.';ui.action.textContent='Keep flying →';ui.subhint.textContent='P OR SPACE TO RESUME';ui.pause.textContent='▶';ui.pause.setAttribute('aria-label','Resume game');ui.status.textContent='PAUSED'}else if(state==='paused'){state='playing';ui.overlay.hidden=true;ui.pause.textContent='Ⅱ';ui.pause.setAttribute('aria-label','Pause game');ui.status.textContent='FIND YOUR RHYTHM';acc=0;last=performance.now();canvas.focus({preventScroll:true})}}
@@ -70,7 +82,7 @@ function update(dt){
  invincible=Math.max(0,invincible-dt);bird.v+=GRAVITY*dt;bird.y+=bird.v*dt;
  if(bird.y-R<0||bird.y+R>FLOOR){damage();if(state!=='playing')return;bird.y=Math.max(R+1,Math.min(FLOOR-R-1,bird.y));if(bird.y>=FLOOR-R-1)bird.v=JUMP;else bird.v=Math.max(0,bird.v)}
  for(const p of pipes){
-   p.x-=distance;const top=p.center-GAP/2,bottom=p.center+GAP/2;
+   p.x-=distance;const top=p.center-p.gap/2,bottom=p.center+p.gap/2;
    if(circleRect(BX,bird.y,R,p.x-4,0,64,top)||circleRect(BX,bird.y,R,p.x-4,bottom,64,FLOOR-bottom)){damage(p);if(state!=='playing')return}
    if(!p.passed&&p.x+60<BX-R){p.passed=true;score++;ui.score.textContent=score;tone(950,.1);ui.announcement.textContent=`Score ${score}`}
  }
@@ -88,7 +100,7 @@ function drawCollectible(item){
  ctx.fillStyle='#20243f';ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,0,13,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle=color;ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold 18px system-ui';ctx.fillText(item.type==='health'?'♥':'✦',0,1);ctx.restore();
 }
 function round(x,y,w,h,r,fill){ctx.fillStyle=fill;ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill()}
-function drawPipe(p){const top=p.center-GAP/2,bottom=p.center+GAP/2;const grad=ctx.createLinearGradient(p.x,0,p.x+56,0);grad.addColorStop(0,'#669e95');grad.addColorStop(.3,'#94cdb4');grad.addColorStop(1,'#4a7c7d');round(p.x,-20,56,top+20,5,grad);round(p.x,bottom,56,FLOOR-bottom+10,5,grad);round(p.x-4,top-20,64,20,5,'#a6d9b9');round(p.x-4,bottom,64,20,5,'#a6d9b9');ctx.fillStyle='#d9f6ca55';ctx.fillRect(p.x+6,0,4,Math.max(0,top-23));ctx.fillRect(p.x+6,bottom+25,4,FLOOR-bottom-25);ctx.fillStyle='#1c414c40';ctx.fillRect(p.x+42,0,8,Math.max(0,top-21));ctx.fillRect(p.x+42,bottom+21,8,FLOOR-bottom-21)}
+function drawPipe(p){const top=p.center-p.gap/2,bottom=p.center+p.gap/2;const grad=ctx.createLinearGradient(p.x,0,p.x+56,0);grad.addColorStop(0,'#669e95');grad.addColorStop(.3,'#94cdb4');grad.addColorStop(1,'#4a7c7d');round(p.x,-20,56,top+20,5,grad);round(p.x,bottom,56,FLOOR-bottom+10,5,grad);round(p.x-4,top-20,64,20,5,'#a6d9b9');round(p.x-4,bottom,64,20,5,'#a6d9b9');ctx.fillStyle='#d9f6ca55';ctx.fillRect(p.x+6,0,4,Math.max(0,top-23));ctx.fillRect(p.x+6,bottom+25,4,FLOOR-bottom-25);ctx.fillStyle='#1c414c40';ctx.fillRect(p.x+42,0,8,Math.max(0,top-21));ctx.fillRect(p.x+42,bottom+21,8,FLOOR-bottom-21)}
 function drawBird(){const y=state==='ready'?362+Math.sin(elapsed*3)*7:bird.y;ctx.save();if(invincible>0){ctx.globalAlpha=.55+.45*Math.abs(Math.sin(elapsed*20));ctx.strokeStyle='#b4f5c8';ctx.lineWidth=2;ctx.beginPath();ctx.arc(BX,y,25,0,Math.PI*2);ctx.stroke()}ctx.translate(BX,y);ctx.rotate(state==='ready'?-.12:Math.max(-.35,Math.min(1.1,bird.v/650)));ctx.fillStyle='#00000020';ctx.beginPath();ctx.ellipse(-1,8,17,11,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#ffbd82';ctx.beginPath();ctx.ellipse(0,0,18,14,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#ffddac';ctx.beginPath();ctx.ellipse(4,5,10,8,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#e48b75';ctx.beginPath();ctx.ellipse(-9,3+Math.sin(elapsed*22)*2,10,6,-.4,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fff6e6';ctx.beginPath();ctx.arc(8,-5,6,0,Math.PI*2);ctx.fill();ctx.fillStyle='#20253a';ctx.beginPath();ctx.arc(10,-5,2.5,0,Math.PI*2);ctx.fill();ctx.fillStyle='#f38d78';ctx.beginPath();ctx.moveTo(16,0);ctx.lineTo(26,3);ctx.lineTo(16,6);ctx.closePath();ctx.fill();ctx.restore()}
 function draw(){ctx.setTransform(canvas.width/W,0,0,canvas.height/H,0,0);const sky=ctx.createLinearGradient(0,0,0,H);sky.addColorStop(0,'#242844');sky.addColorStop(.55,'#55516d');sky.addColorStop(1,'#b2878d');ctx.fillStyle=sky;ctx.fillRect(0,0,W,H);for(const s of stars){ctx.globalAlpha=.3+Math.sin(elapsed*.6+s.x)*.15;ctx.fillStyle='#fdf1d8';ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,Math.PI*2);ctx.fill()}ctx.globalAlpha=1;ctx.fillStyle='#ffdda8';ctx.beginPath();ctx.arc(304,104,31,0,Math.PI*2);ctx.fill();ctx.fillStyle='#ffdda811';ctx.beginPath();ctx.arc(304,104,46,0,Math.PI*2);ctx.fill();
 for(let layer=0;layer<2;layer++){ctx.fillStyle=layer?'#44455e':'#5e5a74';for(const b of skyline(layer)){ctx.fillRect(b.x,FLOOR-b.height,b.width,b.height);if(layer){ctx.fillStyle='#e7ba9b44';for(let j=0;j<3;j++)ctx.fillRect(b.x+11+j*10,FLOOR-b.height+14,3,5);ctx.fillStyle='#44455e'}}}
@@ -99,3 +111,4 @@ document.querySelector('.arena').addEventListener('pointerdown',e=>{if(e.target.
 </script>
 </body>
 </html>
+
